@@ -10,9 +10,6 @@ def extract_words_from_fb2(file_path):
     # Список для хранения всех слов
     words = set()
 
-
-
-#com
     # Регулярное выражение для разделения текста на слова
     word_pattern = re.compile(r'\b[A-Za-z]+\b')
 

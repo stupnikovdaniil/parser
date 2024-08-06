@@ -1,7 +1,6 @@
-
 import os
 import time
-import sqlite3
+import psycopg2  # Импортируем psycopg2 для работы с PostgreSQL
 import requests
 from bs4 import BeautifulSoup
 import random
@@ -17,18 +16,29 @@ headers = {
     'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4'
 }
 
-db_path = 'database.sqlite3'
+# Подключаемся к базе данных PostgreSQL
+conn = psycopg2.connect(
+    dbname="cardglot-beta",
+    user="postgres",
+    password="postgres",
+    host="194.87.219.18",
+    port="5432"
+)
 
-with sqlite3.connect(db_path) as conn:
-    # Проверяем, существует ли столбец
+with conn:
     cursor = conn.cursor()
-    cursor.execute("PRAGMA table_info(translations);")
+
+    # Проверяем, существует ли столбец "definition"
+    cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name='Translator_translations' AND column_name='definition';
+    """)
     columns = cursor.fetchall()
 
 
-
-    # Получаем слова для которых определение еще не запрашивалось
-    cursor.execute("SELECT word FROM Translator_translations WHERE definition is null")
+    # Получаем слова, для которых определение еще не запрашивалось
+    cursor.execute('SELECT word FROM "Translator_translations" WHERE definition like %s', ('%/ˈdʒʌŋk fuːd/%',))
     english_words = cursor.fetchall()
 
     # Обрабатываем слова
@@ -37,7 +47,6 @@ with sqlite3.connect(db_path) as conn:
         print(word)
         output = word
 
-        output = word
         word1 = word
         if ' ' in word:
             word1 = word.replace(' ', '-') + f"?q={word.replace(' ', '+')}"
@@ -47,10 +56,10 @@ with sqlite3.connect(db_path) as conn:
 
         if response.status_code == 404:
             print(f'Слово "{word}" не найдено\n')
-            conn.execute('''
-                UPDATE Translator_translations
+            cursor.execute('''
+                UPDATE "Translator_translations"
                 SET definition = '-'
-                WHERE word = ? 
+                WHERE word = %s 
             ''', (word,))
             continue
 
@@ -83,14 +92,16 @@ with sqlite3.connect(db_path) as conn:
 
         # Используйте параметризованный запрос для предотвращения SQL-инъекций
         cursor.execute('''
-                        UPDATE Translator_translations 
-                        SET definition = ?
-                        WHERE word = ?
-                    ''', (output_text, word))
-        # delay = random.uniform(1, 3)
-        # time.sleep(delay)
+            UPDATE "Translator_translations" 
+            SET definition = %s
+            WHERE word = %s
+        ''', (output_text, word))
+
+        # Задержка между запросами для предотвращения блокировки (если требуется)
+        delay = random.uniform(1, 3)
+        time.sleep(delay)
+
         print('---------')
         conn.commit()
 
-    # Применяем изменения к базе данных
-    conn.commit()
+    cursor.close()
